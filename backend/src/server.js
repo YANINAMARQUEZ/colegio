@@ -15,7 +15,7 @@ const pool = mysql.createPool({
   connectionLimit: 10,
 })
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }))
+app.use(cors({ origin: process.env.CORS_ORIGIN || 'https://colegio-frontend-tau.vercel.app/' }))
 app.use(express.json())
 
 const studentFields = 'id, name, email, grade, status, DATE_FORMAT(joined, \'%d %b %Y\') AS joined'
