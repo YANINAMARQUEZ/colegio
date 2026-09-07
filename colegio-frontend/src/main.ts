@@ -1,4 +1,15 @@
 import './style.css'
+import React from "react";
+import ReactDOM from "react-dom/client";
+import Products from "./Products";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <Products />
+  </React.StrictMode>
+);
+
+
 
 type Student = { id: number; name: string; email: string; grade: string; status: 'Activo' | 'Pendiente'; joined: string }
 
