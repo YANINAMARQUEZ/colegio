@@ -1,10 +1,15 @@
-import 'dotenv/config'
-import cors from 'cors'
 import express from 'express'
+import cors from 'cors'
 import mysql from 'mysql2/promise'
+import dotenv from 'dotenv'
+import initDatabase from './init-db.js'
+
+dotenv.config()
 
 const app = express()
 const port = Number(process.env.PORT || 3000)
+
+// Pool de conexiones
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   port: Number(process.env.DB_PORT || 3306),
@@ -13,62 +18,205 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME || 'aula_norte',
   waitForConnections: true,
   connectionLimit: 10,
+  queueLimit: 0,
 })
 
+// Middleware
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'https://colegio-frontend-tau.vercel.app' }))
 app.use(express.json())
 
-const studentFields = 'id, name, email, grade, status, DATE_FORMAT(joined, \'%d %b %Y\') AS joined'
+// Inicializar base de datos al arrancar
+await initDatabase()
 
-app.get('/api/health', async (_request, response) => {
+// Health check
+app.get('/api/health', async (req, res) => {
   try {
-    await pool.query('SELECT 1')
-    response.json({ status: 'ok', database: 'connected' })
+    const connection = await pool.getConnection()
+    await connection.query('SELECT 1')
+    connection.release()
+    res.json({ status: 'ok', database: 'connected' })
   } catch (error) {
-    console.error('Database error:', error.message)
-    response.status(503).json({ status: 'error', database: 'unavailable', message: error.message })
+    console.error('Health check error:', error.message)
+    res.status(503).json({ status: 'error', database: 'unavailable', message: error.message })
   }
 })
 
-app.get('/api/students', async (request, response, next) => {
+// ============== STUDENTS ==============
+app.get('/api/students', async (req, res, next) => {
   try {
-    const search = String(request.query.search || '').trim()
-    const [rows] = await pool.query(`SELECT ${studentFields} FROM students WHERE name LIKE ? OR email LIKE ? OR grade LIKE ? ORDER BY created_at DESC`, [`%${search}%`, `%${search}%`, `%${search}%`])
-    response.json(rows)
-  } catch (error) { next(error) }
+    const [rows] = await pool.query('SELECT * FROM students ORDER BY created_at DESC')
+    res.json(rows)
+  } catch (error) {
+    next(error)
+  }
 })
 
-app.post('/api/students', async (request, response, next) => {
+app.post('/api/students', async (req, res, next) => {
   try {
-    const { name, email, grade, status = 'Activo' } = request.body
-    if (!name || !email || !grade) return response.status(400).json({ message: 'name, email y grade son obligatorios' })
-    const [result] = await pool.execute('INSERT INTO students (name, email, grade, status) VALUES (?, ?, ?, ?)', [name.trim(), email.trim(), grade, status])
-    const [rows] = await pool.query(`SELECT ${studentFields} FROM students WHERE id = ?`, [result.insertId])
-    response.status(201).json(rows[0])
-  } catch (error) { next(error) }
+    const { name, email, grade, status = 'Activo' } = req.body
+    if (!name || !email || !grade) {
+      return res.status(400).json({ message: 'name, email y grade son obligatorios' })
+    }
+    const [result] = await pool.execute(
+      'INSERT INTO students (name, email, grade, status) VALUES (?, ?, ?, ?)',
+      [name.trim(), email.trim(), grade, status]
+    )
+    const [rows] = await pool.query('SELECT * FROM students WHERE id = ?', [result.insertId])
+    res.status(201).json(rows[0])
+  } catch (error) {
+    next(error)
+  }
 })
 
-app.put('/api/students/:id', async (request, response, next) => {
+app.put('/api/students/:id', async (req, res, next) => {
   try {
-    const { name, email, grade, status } = request.body
-    const [result] = await pool.execute('UPDATE students SET name = ?, email = ?, grade = ?, status = ? WHERE id = ?', [name?.trim(), email?.trim(), grade, status, request.params.id])
-    if (!result.affectedRows) return response.status(404).json({ message: 'Alumno no encontrado' })
-    const [rows] = await pool.query(`SELECT ${studentFields} FROM students WHERE id = ?`, [request.params.id])
-    response.json(rows[0])
-  } catch (error) { next(error) }
+    const { name, email, grade, status } = req.body
+    const [result] = await pool.execute(
+      'UPDATE students SET name = ?, email = ?, grade = ?, status = ? WHERE id = ?',
+      [name?.trim(), email?.trim(), grade, status, req.params.id]
+    )
+    if (!result.affectedRows) {
+      return res.status(404).json({ message: 'Alumno no encontrado' })
+    }
+    const [rows] = await pool.query('SELECT * FROM students WHERE id = ?', [req.params.id])
+    res.json(rows[0])
+  } catch (error) {
+    next(error)
+  }
 })
 
-app.delete('/api/students/:id', async (request, response, next) => {
+app.delete('/api/students/:id', async (req, res, next) => {
   try {
-    const [result] = await pool.execute('DELETE FROM students WHERE id = ?', [request.params.id])
-    if (!result.affectedRows) return response.status(404).json({ message: 'Alumno no encontrado' })
-    response.status(204).send()
-  } catch (error) { next(error) }
+    const [result] = await pool.execute('DELETE FROM students WHERE id = ?', [req.params.id])
+    if (!result.affectedRows) {
+      return res.status(404).json({ message: 'Alumno no encontrado' })
+    }
+    res.status(204).send()
+  } catch (error) {
+    next(error)
+  }
 })
 
-app.use((error, _request, response, _next) => {
-  console.error(error)
-  response.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'Ese correo ya está registrado' : 'Error interno del servidor' })
+// ============== COURSES ==============
+app.get('/api/courses', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM courses ORDER BY created_at DESC')
+    res.json(rows)
+  } catch (error) {
+    next(error)
+  }
 })
 
-app.listen(port, () => console.log(`Aula Norte API escuchando en http://localhost:${port}`))
+app.post('/api/courses', async (req, res, next) => {
+  try {
+    const { title, description, start_date, end_date } = req.body
+    if (!title) {
+      return res.status(400).json({ message: 'title es obligatorio' })
+    }
+    const [result] = await pool.execute(
+      'INSERT INTO courses (title, description, start_date, end_date) VALUES (?, ?, ?, ?)',
+      [title, description, start_date, end_date]
+    )
+    const [rows] = await pool.query('SELECT * FROM courses WHERE id = ?', [result.insertId])
+    res.status(201).json(rows[0])
+  } catch (error) {
+    next(error)
+  }
+})
+
+// ============== ENROLLMENTS ==============
+app.get('/api/enrollments', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM enrollments ORDER BY created_at DESC')
+    res.json(rows)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/enrollments', async (req, res, next) => {
+  try {
+    const { student_id, course_id } = req.body
+    if (!student_id || !course_id) {
+      return res.status(400).json({ message: 'student_id y course_id son obligatorios' })
+    }
+    const [result] = await pool.execute(
+      'INSERT INTO enrollments (student_id, course_id) VALUES (?, ?)',
+      [student_id, course_id]
+    )
+    const [rows] = await pool.query('SELECT * FROM enrollments WHERE id = ?', [result.insertId])
+    res.status(201).json(rows[0])
+  } catch (error) {
+    next(error)
+  }
+})
+
+// ============== ORDERS ==============
+app.get('/api/orders', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM orders ORDER BY created_at DESC')
+    res.json(rows)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/orders', async (req, res, next) => {
+  try {
+    const { student_id, total } = req.body
+    if (!student_id || !total) {
+      return res.status(400).json({ message: 'student_id y total son obligatorios' })
+    }
+    const [result] = await pool.execute(
+      'INSERT INTO orders (student_id, total) VALUES (?, ?)',
+      [student_id, total]
+    )
+    const [rows] = await pool.query('SELECT * FROM orders WHERE id = ?', [result.insertId])
+    res.status(201).json(rows[0])
+  } catch (error) {
+    next(error)
+  }
+})
+
+// ============== USERS ==============
+app.get('/api/users', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT id, username, role, created_at FROM users ORDER BY created_at DESC')
+    res.json(rows)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/users', async (req, res, next) => {
+  try {
+    const { username, password, role = 'user' } = req.body
+    if (!username || !password) {
+      return res.status(400).json({ message: 'username y password son obligatorios' })
+    }
+    const [result] = await pool.execute(
+      'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
+      [username, password, role]
+    )
+    const [rows] = await pool.query('SELECT id, username, role, created_at FROM users WHERE id = ?', [result.insertId])
+    res.status(201).json(rows[0])
+  } catch (error) {
+    next(error)
+  }
+})
+
+// ============== ERROR HANDLER ==============
+app.use((error, req, res, next) => {
+  console.error('Error:', error.message)
+  if (error.code === 'ER_DUP_ENTRY') {
+    return res.status(409).json({ message: 'El registro ya existe' })
+  }
+  if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+    return res.status(400).json({ message: 'Referencia inválida a otra tabla' })
+  }
+  res.status(500).json({ message: 'Error interno del servidor', error: error.message })
+})
+
+app.listen(port, () => {
+  console.log(`🚀 Aula Norte API escuchando en http://localhost:${port}`)
+})
