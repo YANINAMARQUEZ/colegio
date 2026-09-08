@@ -5,21 +5,17 @@ import mysql from 'mysql2/promise'
 
 const app = express()
 const port = Number(process.env.PORT || 3000)
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'aula_norte',
-  waitForConnections: true,
-  connectionLimit: 10,
-})
+
+// 🚨 Conexión a Railway usando DATABASE_URL
+// En Render → pestaña Environment → agregá la variable DATABASE_URL
+const pool = mysql.createPool(process.env.DATABASE_URL)
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'https://colegio-frontend-tau.vercel.app/' }))
 app.use(express.json())
 
 const studentFields = 'id, name, email, grade, status, DATE_FORMAT(joined, \'%d %b %Y\') AS joined'
 
+// ✅ Ruta de salud
 app.get('/api/health', async (_request, response) => {
   try {
     await pool.query('SELECT 1')
@@ -29,34 +25,49 @@ app.get('/api/health', async (_request, response) => {
   }
 })
 
+// ✅ Listar alumnos
 app.get('/api/students', async (request, response, next) => {
   try {
     const search = String(request.query.search || '').trim()
-    const [rows] = await pool.query(`SELECT ${studentFields} FROM students WHERE name LIKE ? OR email LIKE ? OR grade LIKE ? ORDER BY created_at DESC`, [`%${search}%`, `%${search}%`, `%${search}%`])
+    const [rows] = await pool.query(
+      `SELECT ${studentFields} FROM students 
+       WHERE name LIKE ? OR email LIKE ? OR grade LIKE ? 
+       ORDER BY created_at DESC`,
+      [`%${search}%`, `%${search}%`, `%${search}%`]
+    )
     response.json(rows)
   } catch (error) { next(error) }
 })
 
+// ✅ Crear alumno
 app.post('/api/students', async (request, response, next) => {
   try {
     const { name, email, grade, status = 'Activo' } = request.body
     if (!name || !email || !grade) return response.status(400).json({ message: 'name, email y grade son obligatorios' })
-    const [result] = await pool.execute('INSERT INTO students (name, email, grade, status) VALUES (?, ?, ?, ?)', [name.trim(), email.trim(), grade, status])
+    const [result] = await pool.execute(
+      'INSERT INTO students (name, email, grade, status) VALUES (?, ?, ?, ?)',
+      [name.trim(), email.trim(), grade, status]
+    )
     const [rows] = await pool.query(`SELECT ${studentFields} FROM students WHERE id = ?`, [result.insertId])
     response.status(201).json(rows[0])
   } catch (error) { next(error) }
 })
 
+// ✅ Actualizar alumno
 app.put('/api/students/:id', async (request, response, next) => {
   try {
     const { name, email, grade, status } = request.body
-    const [result] = await pool.execute('UPDATE students SET name = ?, email = ?, grade = ?, status = ? WHERE id = ?', [name?.trim(), email?.trim(), grade, status, request.params.id])
+    const [result] = await pool.execute(
+      'UPDATE students SET name = ?, email = ?, grade = ?, status = ? WHERE id = ?',
+      [name?.trim(), email?.trim(), grade, status, request.params.id]
+    )
     if (!result.affectedRows) return response.status(404).json({ message: 'Alumno no encontrado' })
     const [rows] = await pool.query(`SELECT ${studentFields} FROM students WHERE id = ?`, [request.params.id])
     response.json(rows[0])
   } catch (error) { next(error) }
 })
 
+// ✅ Eliminar alumno
 app.delete('/api/students/:id', async (request, response, next) => {
   try {
     const [result] = await pool.execute('DELETE FROM students WHERE id = ?', [request.params.id])
@@ -65,9 +76,13 @@ app.delete('/api/students/:id', async (request, response, next) => {
   } catch (error) { next(error) }
 })
 
+// ✅ Manejo de errores
 app.use((error, _request, response, _next) => {
   console.error(error)
-  response.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'Ese correo ya está registrado' : 'Error interno del servidor' })
+  response.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({
+    message: error.code === 'ER_DUP_ENTRY' ? 'Ese correo ya está registrado' : 'Error interno del servidor'
+  })
 })
 
-app.listen(port, () => console.log(`Aula Norte API escuchando en http://localhost:${port}`))
+// ✅ Levantar servidor en Render
+app.listen(port, () => console.log(`Aula Norte API escuchando en puerto ${port}`))
