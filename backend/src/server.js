@@ -1,93 +1,102 @@
-  import 'dotenv/config'
-import cors from 'cors'
-import express from 'express'
-import mysql from 'mysql2/promise'
+  import express from "express";
+import cors from "cors";
+import mysql from "mysql2/promise";
+import dotenv from "dotenv";
 
-const app = express()
-const port = Number(process.env.PORT || 3000)
+dotenv.config();
 
-//  Conexión a Railway usando variables separadas
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Conexión a MySQL
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  port: process.env.DB_PORT || 3306,
-})
+  port: process.env.DB_PORT
+});
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'https://colegio-frontend-tau.vercel.app/' }))
-app.use(express.json())
+// ------------------ RUTAS ------------------
 
-const studentFields = 'id, name, email, grade, status, DATE_FORMAT(joined, \'%d %b %Y\') AS joined'
+// Students
+app.get("/api/students", async (req, res) => {
+  const [rows] = await pool.query("SELECT * FROM students");
+  res.json(rows);
+});
 
-// Ruta de salud
-app.get('/api/health', async (_request, response) => {
-  try {
-    await pool.query('SELECT 1')
-    response.json({ status: 'ok', database: 'connected' })
-  } catch {
-    response.status(503).json({ status: 'error', database: 'unavailable' })
-  }
-})
+app.post("/api/students", async (req, res) => {
+  const { name, email, grade } = req.body;
+  const [result] = await pool.query(
+    "INSERT INTO students (name, email, grade) VALUES (?, ?, ?)",
+    [name, email, grade]
+  );
+  res.json({ id: result.insertId, name, email, grade });
+});
 
-//  Listar alumnos
-app.get('/api/students', async (request, response, next) => {
-  try {
-    const search = String(request.query.search || '').trim()
-    const [rows] = await pool.query(
-      `SELECT ${studentFields} FROM students 
-       WHERE name LIKE ? OR email LIKE ? OR grade LIKE ? 
-       ORDER BY created_at DESC`,
-      [`%${search}%`, `%${search}%`, `%${search}%`]
-    )
-    response.json(rows)
-  } catch (error) { next(error) }
-})
+// Courses
+app.get("/api/courses", async (req, res) => {
+  const [rows] = await pool.query("SELECT * FROM courses");
+  res.json(rows);
+});
 
-// Crear alumno
-app.post('/api/students', async (request, response, next) => {
-  try {
-    const { name, email, grade, status = 'Activo' } = request.body
-    if (!name || !email || !grade) return response.status(400).json({ message: 'name, email y grade son obligatorios' })
-    const [result] = await pool.execute(
-      'INSERT INTO students (name, email, grade, status) VALUES (?, ?, ?, ?)',
-      [name.trim(), email.trim(), grade, status]
-    )
-    const [rows] = await pool.query(`SELECT ${studentFields} FROM students WHERE id = ?`, [result.insertId])
-    response.status(201).json(rows[0])
-  } catch (error) { next(error) }
-})
+app.post("/api/courses", async (req, res) => {
+  const { title, description, start_date, end_date } = req.body;
+  const [result] = await pool.query(
+    "INSERT INTO courses (title, description, start_date, end_date) VALUES (?, ?, ?, ?)",
+    [title, description, start_date, end_date]
+  );
+  res.json({ id: result.insertId, title, description, start_date, end_date });
+});
 
-// Actualizar alumno
-app.put('/api/students/:id', async (request, response, next) => {
-  try {
-    const { name, email, grade, status } = request.body
-    const [result] = await pool.execute(
-      'UPDATE students SET name = ?, email = ?, grade = ?, status = ? WHERE id = ?',
-      [name?.trim(), email?.trim(), grade, status, request.params.id]
-    )
-    if (!result.affectedRows) return response.status(404).json({ message: 'Alumno no encontrado' })
-    const [rows] = await pool.query(`SELECT ${studentFields} FROM students WHERE id = ?`, [request.params.id])
-    response.json(rows[0])
-  } catch (error) { next(error) }
-})
+// Enrollments
+app.get("/api/enrollments", async (req, res) => {
+  const [rows] = await pool.query("SELECT * FROM enrollments");
+  res.json(rows);
+});
 
-// Eliminar alumno
-app.delete('/api/students/:id', async (request, response, next) => {
-  try {
-    const [result] = await pool.execute('DELETE FROM students WHERE id = ?', [request.params.id])
-    if (!result.affectedRows) return response.status(404).json({ message: 'Alumno no encontrado' })
-    response.status(204).send()
-  } catch (error) { next(error) }
-})
+app.post("/api/enrollments", async (req, res) => {
+  const { student_id, course_id } = req.body;
+  const [result] = await pool.query(
+    "INSERT INTO enrollments (student_id, course_id) VALUES (?, ?)",
+    [student_id, course_id]
+  );
+  res.json({ id: result.insertId, student_id, course_id });
+});
 
-// Manejo de errores
-app.use((error, _request, response, _next) => {
-  console.error(error)
-  response.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({
-    message: error.code === 'ER_DUP_ENTRY' ? 'Ese correo ya está registrado' : 'Error interno del servidor'
-  })
-})
+// Orders
+app.get("/api/orders", async (req, res) => {
+  const [rows] = await pool.query("SELECT * FROM orders");
+  res.json(rows);
+});
 
-//  Levantar servidor en Render
-app.listen(port, () => console.log(`Aula Norte API escuchando en puerto ${port}`))
+app.post("/api/orders", async (req, res) => {
+  const { student_id, total } = req.body;
+  const [result] = await pool.query(
+    "INSERT INTO orders (student_id, total) VALUES (?, ?)",
+    [student_id, total]
+  );
+  res.json({ id: result.insertId, student_id, total });
+});
+
+// Users
+app.get("/api/users", async (req, res) => {
+  const [rows] = await pool.query("SELECT * FROM users");
+  res.json(rows);
+});
+
+app.post("/api/users", async (req, res) => {
+  const { username, password, role } = req.body;
+  const [result] = await pool.query(
+    "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+    [username, password, role]
+  );
+  res.json({ id: result.insertId, username, role });
+});
+
+// ------------------ SERVER ------------------
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor backend corriendo en puerto ${PORT}`);
+});
