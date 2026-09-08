@@ -1,4 +1,4 @@
-import 'dotenv/config'
+  import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
 import mysql from 'mysql2/promise'
@@ -6,16 +6,21 @@ import mysql from 'mysql2/promise'
 const app = express()
 const port = Number(process.env.PORT || 3000)
 
-//  Conexión a Railway usando DATABASE_URL
-// En Render → pestaña Environment → agregá la variable DATABASE_URL
-const pool = mysql.createPool(process.env.DATABASE_URL)
+//  Conexión a Railway usando variables separadas
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT || 3306,
+})
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'https://colegio-frontend-tau.vercel.app/' }))
 app.use(express.json())
 
 const studentFields = 'id, name, email, grade, status, DATE_FORMAT(joined, \'%d %b %Y\') AS joined'
 
-// ✅ Ruta de salud
+// Ruta de salud
 app.get('/api/health', async (_request, response) => {
   try {
     await pool.query('SELECT 1')
@@ -25,7 +30,7 @@ app.get('/api/health', async (_request, response) => {
   }
 })
 
-// ✅ Listar alumnos
+//  Listar alumnos
 app.get('/api/students', async (request, response, next) => {
   try {
     const search = String(request.query.search || '').trim()
@@ -39,7 +44,7 @@ app.get('/api/students', async (request, response, next) => {
   } catch (error) { next(error) }
 })
 
-// ✅ Crear alumno
+// Crear alumno
 app.post('/api/students', async (request, response, next) => {
   try {
     const { name, email, grade, status = 'Activo' } = request.body
@@ -53,7 +58,7 @@ app.post('/api/students', async (request, response, next) => {
   } catch (error) { next(error) }
 })
 
-// ✅ Actualizar alumno
+// Actualizar alumno
 app.put('/api/students/:id', async (request, response, next) => {
   try {
     const { name, email, grade, status } = request.body
@@ -67,7 +72,7 @@ app.put('/api/students/:id', async (request, response, next) => {
   } catch (error) { next(error) }
 })
 
-// ✅ Eliminar alumno
+// Eliminar alumno
 app.delete('/api/students/:id', async (request, response, next) => {
   try {
     const [result] = await pool.execute('DELETE FROM students WHERE id = ?', [request.params.id])
@@ -76,7 +81,7 @@ app.delete('/api/students/:id', async (request, response, next) => {
   } catch (error) { next(error) }
 })
 
-// ✅ Manejo de errores
+// Manejo de errores
 app.use((error, _request, response, _next) => {
   console.error(error)
   response.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({
@@ -84,5 +89,5 @@ app.use((error, _request, response, _next) => {
   })
 })
 
-// ✅ Levantar servidor en Render
+//  Levantar servidor en Render
 app.listen(port, () => console.log(`Aula Norte API escuchando en puerto ${port}`))
