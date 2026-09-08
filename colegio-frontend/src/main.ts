@@ -13,14 +13,14 @@ type Student = {
 }
 
 // Componente principal
-function students() {
+function Students() {
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   // Cargar alumnos desde la API
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL}/api/students`)
+    fetch(`${import.meta.env.VITE_API_URL}/students`) 
       .then(res => {
         if (!res.ok) throw new Error("Error al obtener alumnos")
         return res.json()
@@ -71,6 +71,8 @@ function students() {
 // Renderizar en el root
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <Products />
+    <Students />
   </React.StrictMode>
 )
+
+  
