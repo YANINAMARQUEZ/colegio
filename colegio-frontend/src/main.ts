@@ -13,7 +13,7 @@ type Student = {
 }
 
 // Componente principal
-function Products() {
+function students() {
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
