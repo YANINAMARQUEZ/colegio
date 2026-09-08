@@ -6,7 +6,7 @@ import mysql from 'mysql2/promise'
 const app = express()
 const port = Number(process.env.PORT || 3000)
 
-// 🚨 Conexión a Railway usando DATABASE_URL
+//  Conexión a Railway usando DATABASE_URL
 // En Render → pestaña Environment → agregá la variable DATABASE_URL
 const pool = mysql.createPool(process.env.DATABASE_URL)
 
