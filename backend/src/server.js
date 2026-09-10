@@ -9,24 +9,25 @@ dotenv.config()
 const app = express()
 const port = Number(process.env.PORT || 3000)
 
-// Pool de conexiones
+// Pool de conexiones con DATABASE_URL de Railway
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'aula_norte',
+  uri: process.env.DATABASE_URL, // ejemplo: mysql://user:pass@host:port/dbname
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
 })
 
 // Middleware
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'https://colegio-frontend-tau.vercel.app' }))
+app.use(cors({
+  origin: [
+    process.env.CORS_ORIGIN || 'https://colegio-frontend-tau.vercel.app',
+    'http://localhost:5173' // para pruebas locales con Vite
+  ]
+}))
 app.use(express.json())
 
 // Inicializar base de datos al arrancar
-await initDatabase()
+await initDatabase(pool)
 
 // Health check
 app.get('/api/health', async (req, res) => {
@@ -63,35 +64,6 @@ app.post('/api/students', async (req, res, next) => {
     )
     const [rows] = await pool.query('SELECT * FROM students WHERE id = ?', [result.insertId])
     res.status(201).json(rows[0])
-  } catch (error) {
-    next(error)
-  }
-})
-
-app.put('/api/students/:id', async (req, res, next) => {
-  try {
-    const { name, email, grade, status } = req.body
-    const [result] = await pool.execute(
-      'UPDATE students SET name = ?, email = ?, grade = ?, status = ? WHERE id = ?',
-      [name?.trim(), email?.trim(), grade, status, req.params.id]
-    )
-    if (!result.affectedRows) {
-      return res.status(404).json({ message: 'Alumno no encontrado' })
-    }
-    const [rows] = await pool.query('SELECT * FROM students WHERE id = ?', [req.params.id])
-    res.json(rows[0])
-  } catch (error) {
-    next(error)
-  }
-})
-
-app.delete('/api/students/:id', async (req, res, next) => {
-  try {
-    const [result] = await pool.execute('DELETE FROM students WHERE id = ?', [req.params.id])
-    if (!result.affectedRows) {
-      return res.status(404).json({ message: 'Alumno no encontrado' })
-    }
-    res.status(204).send()
   } catch (error) {
     next(error)
   }
@@ -218,5 +190,5 @@ app.use((error, req, res, next) => {
 })
 
 app.listen(port, () => {
-  console.log(`🚀 Aula Norte API escuchando en http://localhost:${port}`)
+  console.log(`🚀 Aula Norte API escuchando en puerto ${port}`)
 })
